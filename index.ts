@@ -1,5 +1,5 @@
-// Stores *all* attributes defined via @attribute. Attribute observation on
-// custom elements works only when we declare a static getter for the list of
+// Stores *all* attributes defined via @attr. Attribute observation on custom
+// elements works only when we declare a static getter for the list of
 // attributes on the component class. This getter gets called before the the
 // decorators initialize, but after the decorator functions are evaluated. This
 // enabled us to store all attribute names in this set, but they are at this
@@ -19,15 +19,6 @@ const attributeMetadata = new Map<
   Record<string, { key: symbol; transformer: (input: unknown) => any }>
 >();
 
-// Overly precise description of what the @define decorator returns
-type ExtendedCustomElementConstructor =
-  { readonly observedAttributes: string[] } &
-  (new (...args: ConstructorParameters<CustomElementConstructor>) =>
-    HTMLElement & {
-      attributeChangedCallback(name: string, prev: string, next: string): void
-    }
-  );
-
 // Define a custom element with a given tag name and also perform some
 // additional setup the make @attribute work.
 function define<T extends CustomElementConstructor>(
@@ -39,7 +30,7 @@ function define<T extends CustomElementConstructor>(
   return function(
     target: T,
     context: ClassDecoratorContext<T>
-  ): ExtendedCustomElementConstructor {
+  ): T {
     // Register the element with the custom element registry once all other
     // decorators have been applied (eg. when the class decorator initializer
     // runs).
@@ -98,9 +89,9 @@ type ClassAccessorDecorator<T, V, R extends ClassAccessorDecoratorResult<unknown
   context: ClassAccessorDecoratorContext<T, V>
 ) => R;
 
-// Accessor decorator @attribute. Looks simple when used, but requires some
+// Accessor decorator @attr. Looks simple when used, but requires some
 // substantial JavaScript gymnastics to get working properly.
-function attribute<T extends HTMLElement, V>(
+function attr<T extends HTMLElement, V>(
   transformer: AttributeTransformer<V>
 ): ClassAccessorDecorator<T, V> {
   const to = transformer.to ?? String;
@@ -207,10 +198,10 @@ function handle<T extends HTMLElement>(type: string): HandleDecorator<T> {
   }
 }
 
-import { AttributeTransformer, number } from "./attributeTransformers";
+import { AttributeTransformer, int } from "./attributeTransformers";
 
 export @define("counter-element") class CounterElement extends HTMLElement {
-  @attribute(number()) accessor value: number = 9001;
+  @attr(int()) accessor value: number = 9001;
 
   @handle("click") increment(evt: MouseEvent): void {
     this.value += 1;

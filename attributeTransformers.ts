@@ -26,3 +26,25 @@ export function number(
     to: String,
   };
 };
+
+export function int(
+  options: NumberAttributeOptions = {}
+): AttributeTransformer<number> {
+  const {
+    min = Number.MIN_SAFE_INTEGER,
+    max = Number.MAX_SAFE_INTEGER
+  } = options;
+  return {
+    from: function(value): number {
+      const asNumber = Number(value);
+      if (asNumber < min) {
+        return Math.trunc(min);
+      }
+      if (asNumber > max) {
+        return Math.trunc(max);
+      }
+      return Math.trunc(asNumber);
+    },
+    to: String,
+  };
+};
