@@ -1,6 +1,6 @@
 import { render, html } from "uhtml";
-import { define, attr, handle, reactive } from "./decorators";
-import { int } from "./attributeTransformers";
+import { define, attr, handle, reactive } from "./lib/decorators";
+import { int } from "./lib/transformers";
 
 @define("counter-element")
 class CounterElement extends HTMLElement {
@@ -28,8 +28,12 @@ class CounterElement extends HTMLElement {
       this.#root,
       html`
         ${this.value}
-        <button class="plus">+${this.step}</button>
-        <button class="minus">-${this.step}</button>
+        <button ?disabled=${this.value + this.step > 9000} class="plus">
+          + ${this.step}
+        </button>
+        <button ?disabled=${this.value - this.step < 0} class="minus">
+          - ${this.step}
+        </button>
       `
     );
   }
