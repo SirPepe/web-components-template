@@ -15,10 +15,10 @@ export function number(
   return {
     from: function(value): number {
       const asNumber = Number(value);
-      if (asNumber < min) {
+      if (asNumber <= min) {
         return min;
       }
-      if (asNumber > max) {
+      if (asNumber >= max) {
         return max;
       }
       return asNumber;
@@ -37,10 +37,10 @@ export function int(
   return {
     from: function(value): number {
       const asNumber = Number(value);
-      if (asNumber < min) {
+      if (asNumber <= min) {
         return Math.trunc(min);
       }
-      if (asNumber > max) {
+      if (asNumber >= max) {
         return Math.trunc(max);
       }
       return Math.trunc(asNumber);
