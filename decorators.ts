@@ -19,7 +19,7 @@ const observableAttributes = new Set<string>();
 // symbol.
 const attributeMetadata = new Map<
   Function,
-  Record<string, { key: symbol; transformer: (input: unknown) => any }>
+  Record<string, { key: symbol; parse: (input: unknown) => any }>
 >();
 
 //
@@ -75,6 +75,7 @@ export function define<T extends CustomElementConstructor>(
         oldValue: string,
         newValue: string
       ): void {
+        console.log("ACB", name, oldValue, newValue);
         // Bases custom element classes may or may not have defined an
         // attributeChangedCallback() themselves, but we can't know whether or
         // not this is the case. If an attributeChangedCallback() already
@@ -95,7 +96,7 @@ export function define<T extends CustomElementConstructor>(
           const names = Object.keys(relevantAttributes);
           if (names.includes(name)) {
             const key = relevantAttributes[name].key;
-            const transformedValue = relevantAttributes[name].transformer(newValue);
+            const transformedValue = relevantAttributes[name].parse(newValue);
             if (this[key] !== transformedValue) {
               this[key] = transformedValue;
               reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
@@ -117,9 +118,10 @@ export function attr<T extends HTMLElement, V>(
   transformer: AttributeTransformer<V>,
   options: AttrOptions = {}
 ): ClassAccessorDecorator<T, V> {
-  const to = transformer.to ?? String;
-  const from = transformer.from;
-  const isReactiveAttribute = options.default === false;
+  const parse = transformer.parse;
+  const validate = transformer.validate ?? transformer.parse;
+  const stringify = transformer.stringify ?? String;
+  const isReactiveAttribute = options.default !== true;
   return function(_, context): ClassAccessorDecoratorResult<T, V> {
     if (context.kind !== "accessor") {
       throw new TypeError("@attribute is an accessor decorator");
@@ -152,13 +154,10 @@ export function attr<T extends HTMLElement, V>(
       context.addInitializer(function() {
         const metadata = attributeMetadata.get(this.constructor);
         if (!metadata) {
-          attributeMetadata.set(
-            this.constructor,
-            { attrName: { key, transformer: from } }
-          );
+          attributeMetadata.set(this.constructor, { attrName: { key, parse } });
           return;
         }
-        metadata[attrName] = { key, transformer: from };
+        metadata[attrName] = { key, parse };
       });
     }
 
@@ -168,19 +167,19 @@ export function attr<T extends HTMLElement, V>(
       init(input) {
         const attrValue = this.getAttribute(attrName);
         if (attrValue !== null) {
-          const value = from(attrValue);
+          const value = parse(attrValue);
           this[key] = value;
           reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
           return value;
         }
-        this[key] = from(input);
+        this[key] = validate(input);
         reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
         return input;
       },
       set (input) {
-        input = from(input);
+        input = validate(input);
         this[key] = input;
-        const attrValue = to(input);
+        const attrValue = stringify(input);
         if (isReactiveAttribute) {
           this.setAttribute(attrName, attrValue);
         }

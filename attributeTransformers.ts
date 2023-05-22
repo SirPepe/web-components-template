@@ -1,19 +1,37 @@
 export type AttributeTransformer<V> = {
-  from: (value: unknown) => V;
-  to?: (value?: V | null) => string;
+  // Turns unknown inputs (usually attribute values, that is, string | null)
+  // into property values. Must never throw.
+  parse: (value: unknown) => V;
+  // Validates setter inputs. May throw for invalid values. Defaults to parse()
+  validate?: (value: unknown) => V;
+  // Turns property values into attributes. Defaults to String().
+  stringify?: (value?: V | null) => string;
 }
 
-type NumberAttributeOptions = {
-  min?: number;
-  max?: number;
+type NumberAttributeOptions<T extends number | bigint> = {
+  min?: T;
+  max?: T;
+}
+
+function validateNumber(min: number, max: number): (value: unknown) => number {
+  return function validate(value: unknown) {
+    const asNumber = Number(value);
+    if (Number.isNaN(asNumber)) {
+      throw new Error(`Input ${value} can't be converted to a number`);
+    }
+    if (asNumber < min || asNumber > max) {
+      throw new Error(`${asNumber} is out of range [${min}, ${max}]`);
+    }
+    return asNumber;
+  }
 }
 
 export function number(
-  options: NumberAttributeOptions = {}
+  options: NumberAttributeOptions<number> = {}
 ): AttributeTransformer<number> {
   const { min = -Infinity, max = Infinity } = options;
   return {
-    from: function(value): number {
+    parse(value): number {
       const asNumber = Number(value);
       if (asNumber <= min) {
         return min;
@@ -23,19 +41,20 @@ export function number(
       }
       return asNumber;
     },
-    to: String,
+    validate: validateNumber(min, max),
+    stringify: String,
   };
 };
 
 export function int(
-  options: NumberAttributeOptions = {}
+  options: NumberAttributeOptions<number> = {}
 ): AttributeTransformer<number> {
   const {
     min = Number.MIN_SAFE_INTEGER,
     max = Number.MAX_SAFE_INTEGER
   } = options;
   return {
-    from: function(value): number {
+    parse(value): number {
       const asNumber = Number(value);
       if (asNumber <= min) {
         return Math.trunc(min);
@@ -45,6 +64,7 @@ export function int(
       }
       return Math.trunc(asNumber);
     },
-    to: String,
+    validate: validateNumber(min, max),
+    stringify: String,
   };
 };

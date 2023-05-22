@@ -35,10 +35,6 @@ class CounterElement extends HTMLElement {
   }
 }
 
-
-
-
-
 declare global {
   interface HTMLElementTagNameMap {
     "counter-element": CounterElement;
