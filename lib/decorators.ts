@@ -17,11 +17,65 @@ export function define<T extends CustomElementConstructor>(
   };
 }
 
+// Reactivity notifications for @reactive
+class ReactivityEvent extends Event {
+  #source: HTMLElement;
+
+  constructor(source: HTMLElement) {
+    super("reactivity");
+    this.#source = source;
+  }
+
+  get source(): HTMLElement {
+    return this.#source;
+  }
+}
+
+// For simplicity's sake, all elements share an event bus for reactivity events
+// that support @reactive()
+const reactivityEventBus = new EventTarget();
+let reactivityDispatchHandle: number | null = null;
+const reactivityTargets = new Set<HTMLElement>();
+function enqueueReactivityEvent(target: HTMLElement): void {
+  reactivityTargets.add(target);
+  if (reactivityDispatchHandle === null) {
+    reactivityDispatchHandle = requestAnimationFrame(() => {
+      for (const target of reactivityTargets) {
+        reactivityEventBus.dispatchEvent(new ReactivityEvent(target));
+      }
+      reactivityDispatchHandle = null;
+      reactivityTargets.clear();
+    });
+  }
+}
+
+type ReactiveDecorator<T extends HTMLElement> = (
+  value: () => any,
+  context: ClassMethodDecoratorContext<T, () => any>
+) => void;
+
+export function reactive<T extends HTMLElement>(): ReactiveDecorator<T> {
+  return function (value, context): void {
+    context.addInitializer(function () {
+      // Call the reactive function once after everything else has initialized.
+      // Since accessors initialize *after* decorator initializers, the initial
+      // call needs to be delayed.
+      window.requestAnimationFrame(() => value.call(this));
+      // Listen for subsequent reactivity events
+      reactivityEventBus.addEventListener("reactivity", (evt: any) => {
+        if (evt.source === this) {
+          value.call(this);
+        }
+      });
+    });
+  };
+}
+
 type AttrOptions = {
-  default?: boolean;
+  reflective?: boolean; // defaults to true
 };
 
-// Accessor decorator @attr
+// Accessor decorator @attr()
 export function attr<T extends HTMLElement, V>(
   transformer: AttributeTransformer<V>,
   options: AttrOptions = {}
@@ -29,7 +83,7 @@ export function attr<T extends HTMLElement, V>(
   const parse = transformer.parse;
   const validate = transformer.validate ?? transformer.parse;
   const stringify = transformer.stringify ?? String;
-  const isReactiveAttribute = options.default !== true;
+  const isReflectiveAttribute = options.reflective !== false;
   return function ({ get, set }, context): ClassAccessorDecoratorResult<T, V> {
     if (context.kind !== "accessor") {
       throw new TypeError("@attr is an accessor decorator");
@@ -53,14 +107,14 @@ export function attr<T extends HTMLElement, V>(
     // attributeChangedCallback(), which is usually not *observably*
     // asynchronous), but this is the only way to attach attribute reactivity in
     // a non-intrusive any simple way.
-    if (isReactiveAttribute) {
+    if (isReflectiveAttribute) {
       context.addInitializer(function () {
         new MutationObserver((records) => {
           for (const record of records) {
             const newValue = this.getAttribute(attrName);
             if (newValue !== record.oldValue) {
               set.call(this, parse(newValue));
-              reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
+              enqueueReactivityEvent(this);
             }
           }
         }).observe(this, { attributes: true, attributeFilter: [attrName] });
@@ -78,10 +132,10 @@ export function attr<T extends HTMLElement, V>(
       set(input) {
         const newValue = validate(input);
         set.call(this, newValue);
-        if (isReactiveAttribute) {
+        if (isReflectiveAttribute) {
           this.setAttribute(attrName, stringify(newValue));
         }
-        reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
+        enqueueReactivityEvent(this);
       },
       get() {
         return get.call(this);
@@ -122,46 +176,6 @@ export function handle<T extends HTMLElement>(
           }
         });
       }
-    });
-  };
-}
-
-// For simplicity's sake, all elements share an event bus for reactivity events
-// dispatched to support @reactive
-const reactivityEventBus = new EventTarget();
-
-// Implements reactivity notifications for @reactive
-class ReactivityEvent extends Event {
-  #source: HTMLElement;
-
-  constructor(source: HTMLElement) {
-    super("reactivity");
-    this.#source = source;
-  }
-
-  get source(): HTMLElement {
-    return this.#source;
-  }
-}
-
-type ReactiveDecorator<T extends HTMLElement> = (
-  value: () => any,
-  context: ClassMethodDecoratorContext<T, () => any>
-) => void;
-
-export function reactive<T extends HTMLElement>(): ReactiveDecorator<T> {
-  return function (value, context): void {
-    context.addInitializer(function () {
-      // Call the reactive function once after everything else has initialized.
-      // Since accessors initialize *after* decorator initializers, the initial
-      // call needs to be delayed.
-      window.requestAnimationFrame(() => value.call(this));
-      // Listen for subsequent reactivity events
-      reactivityEventBus.addEventListener("reactivity", (evt: any) => {
-        if (evt.source === this) {
-          value.call(this);
-        }
-      });
     });
   };
 }

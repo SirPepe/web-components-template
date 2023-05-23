@@ -6,7 +6,7 @@ import { int } from "./lib/transformers";
 class CounterElement extends HTMLElement {
   #root = this.attachShadow({ mode: "open" });
 
-  @attr(int({ min: 0, max: 9000 }), { default: true })
+  @attr(int({ min: 0, max: 9000 }), { reflective: false })
   accessor value: number = 0;
 
   @attr(int({ min: 1 }))
