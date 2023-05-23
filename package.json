@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "npx parcel --port=3333 ./index.html"
+    "dev": "rm -rf .parcel-cache && npx parcel --port=3333 ./index.html"
   },
   "author": "peter@peterkroener.de",
   "license": "MIT",
