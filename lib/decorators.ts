@@ -93,7 +93,7 @@ export function attr<T extends HTMLElement, V>(
   const validate = transformer.validate ?? transformer.parse;
   const stringify = transformer.stringify ?? String;
   const isReactiveAttribute = options.default !== true;
-  return function (_, context): ClassAccessorDecoratorResult<T, V> {
+  return function ({ get, set }, context): ClassAccessorDecoratorResult<T, V> {
     if (context.kind !== "accessor") {
       throw new TypeError("@attr is an accessor decorator");
     }
@@ -110,6 +110,7 @@ export function attr<T extends HTMLElement, V>(
     if (context.private) {
       throw new TypeError("Attributes defined by @attr must not be private");
     }
+
     // For reasons outlined at the definition of potentiallyObservedAttributes,
     // we need to keep track of *all* reactive attributes that have been
     // declared by the @attribute decorator.
@@ -117,73 +118,44 @@ export function attr<T extends HTMLElement, V>(
       observableAttributes.add(attrName);
     }
 
-    // Shared secret key for the actual place where attribute data gets stored.
-    // It can't be stored in private fields, as those won't be accessible to
-    // things like the overriding attributeChangedCallback()
-    const key = Symbol();
-
     // Setup the attribute metadata when the decorator for a reactive attribute
     // initializes. This is the earliest point at which we know the element the
     // attribute that defined for.
     if (isReactiveAttribute) {
       context.addInitializer(function () {
-        function handler(
-          this: any, // actually HTMLElement, but any can by indexed by [key]
-          newValue: string | undefined
-        ): void {
-          // Skip initial attributeChangedCallback() before init
-          if (
-            typeof newValue === "undefined" &&
-            typeof this[key] === "undefined"
-          ) {
-            return;
-          }
-          this[key] = parse(newValue);
+        function changeHandler(this: T, attrValue: string | undefined): void {
+          set.call(this, parse(attrValue));
           reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
         }
         const handlers = attributeChangedHandlers.get(this);
         if (!handlers) {
-          attributeChangedHandlers.set(this, { [attrName]: handler });
+          attributeChangedHandlers.set(this, { [attrName]: changeHandler });
           return;
         }
-        handlers[attrName] = handler;
+        handlers[attrName] = changeHandler;
       });
     }
 
-    // Ignore the private field and store the data behind the symbol while
-    // keeping the attribute up to date.
     return {
-      init(
-        this: any, // actually HTMLElement, but any can by indexed by [key]
-        input
-      ) {
+      // Initialize the value from the attribute, if available
+      init(input) {
         const attrValue = this.getAttribute(attrName);
         if (attrValue !== null) {
-          const value = parse(attrValue);
-          this[key] = value;
-          reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
-          return value;
+          return parse(attrValue);
         }
-        this[key] = validate(input);
-        reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
-        return input;
+        return validate(input);
       },
-      set(
-        this: any, // actually HTMLElement, but any can by indexed by [key]
-        input
-      ) {
-        input = validate(input);
-        this[key] = input;
-        const attrValue = stringify(input);
+      // Update the attribute if reactive
+      set(input) {
+        const newValue = validate(input);
+        set.call(this, newValue);
         if (isReactiveAttribute) {
-          this.setAttribute(attrName, attrValue);
+          this.setAttribute(attrName, stringify(newValue));
         }
         reactivityEventBus.dispatchEvent(new ReactivityEvent(this));
       },
-      get(
-        this: any // actually HTMLElement, but any can by indexed by [key]
-      ) {
-        return this[key];
+      get() {
+        return get.call(this);
       },
     };
   };
@@ -251,6 +223,11 @@ type ReactiveDecorator<T extends HTMLElement> = (
 export function reactive<T extends HTMLElement>(): ReactiveDecorator<T> {
   return function (value, context): void {
     context.addInitializer(function () {
+      // Call the reactive function once after everything else has initialized.
+      // Since accessors initialize *after* decorator initializers, the initial
+      // call needs to be delayed.
+      window.requestAnimationFrame(() => value.call(this));
+      // Listen for subsequent reactivity events
       reactivityEventBus.addEventListener("reactivity", (evt: any) => {
         if (evt.source === this) {
           value.call(this);
