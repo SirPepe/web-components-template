@@ -1,9 +1,9 @@
 import { render, html } from "uhtml";
-import { define, attr, handle, reactive } from "./lib/decorators";
-import { int } from "./lib/transformers";
+import { define, attr, handle, reactive } from "../lib/decorators";
+import { int } from "../lib/transformers";
 
 @define("counter-element")
-class CounterElement extends HTMLElement {
+export class CounterElement extends HTMLElement {
   #root = this.attachShadow({ mode: "open" });
 
   @attr(int({ min: 0, max: 9000 }), { reflective: false })

@@ -1,14 +1,14 @@
 import type { AttributeTransformer } from "./transformers";
-import type { ClassAccessorDecorator, HandleDecorator, Handler } from "./types";
+import type { ClassAccessorDecorator } from "./types";
 
-// Defines a custom element with a given tag name *once* any only *after* other
-// decorators have been applied.
+// Class decorator @define defines a custom element with a given tag name *once*
+// and only *after* other decorators have been applied.
 export function define<T extends CustomElementConstructor>(
   tagName: `${string}-${string}`
 ): (target: T, context: ClassDecoratorContext<T>) => void {
   return function (_: T, context: ClassDecoratorContext<T>): void {
     if (context.kind !== "class") {
-      throw new TypeError("@define is a class decorator");
+      throw new TypeError(`Class decorator @define used on ${context.kind}`);
     }
     context.addInitializer(function () {
       window.customElements.get(tagName) ??
@@ -16,6 +16,10 @@ export function define<T extends CustomElementConstructor>(
     });
   };
 }
+
+// Method decorator @reactive calls the method is was applied onto every time a
+// property defined with @prop or an attribute defined with @attr changes its
+// value.
 
 // Reactivity notifications for @reactive
 class ReactivityEvent extends Event {
@@ -31,8 +35,7 @@ class ReactivityEvent extends Event {
   }
 }
 
-// For simplicity's sake, all elements share an event bus for reactivity events
-// that support @reactive()
+// All elements that use @reactive share an event bus to keep things simple.
 const reactivityEventBus = new EventTarget();
 let reactivityDispatchHandle: number | null = null;
 const reactivityTargets = new Set<HTMLElement>();
@@ -56,6 +59,9 @@ type ReactiveDecorator<T extends HTMLElement> = (
 
 export function reactive<T extends HTMLElement>(): ReactiveDecorator<T> {
   return function (value, context): void {
+    if (context.kind !== "method") {
+      throw new TypeError(`Method decorator @reactive used on ${context.kind}`);
+    }
     context.addInitializer(function () {
       // Call the reactive function once after everything else has initialized.
       // Since accessors initialize *after* decorator initializers, the initial
@@ -71,11 +77,14 @@ export function reactive<T extends HTMLElement>(): ReactiveDecorator<T> {
   };
 }
 
+// Accessor decorator @attr() defines a DOM attribute backed by an accessor.
+// Because attributes are public by definition, it can't be applied to private
+// accessors or symbol accessors.
+
 type AttrOptions = {
   reflective?: boolean; // defaults to true
 };
 
-// Accessor decorator @attr()
 export function attr<T extends HTMLElement, V>(
   transformer: AttributeTransformer<V>,
   options: AttrOptions = {}
@@ -86,7 +95,7 @@ export function attr<T extends HTMLElement, V>(
   const isReflectiveAttribute = options.reflective !== false;
   return function ({ get, set }, context): ClassAccessorDecoratorResult<T, V> {
     if (context.kind !== "accessor") {
-      throw new TypeError("@attr is an accessor decorator");
+      throw new TypeError(`Accessor decorator @attr used on ${context.kind}`);
     }
 
     // Accessor decorators can be applied to symbol accessors, but DOM attribute
@@ -144,6 +153,45 @@ export function attr<T extends HTMLElement, V>(
   };
 }
 
+// Accessor decorator @prop() returns a normal accessor, but with validation and
+// reactivity added.
+
+export function prop<T extends HTMLElement, V>(
+  transformer: AttributeTransformer<V>
+): ClassAccessorDecorator<T, V> {
+  const validate = transformer.validate ?? transformer.parse;
+  return function ({ get, set }, context): ClassAccessorDecoratorResult<T, V> {
+    if (context.kind !== "accessor") {
+      throw new TypeError(`Accessor decorator @prop used on ${context.kind}`);
+    }
+    return {
+      init(input) {
+        return validate(input);
+      },
+      set(input) {
+        const newValue = validate(input);
+        set.call(this, newValue);
+        enqueueReactivityEvent(this);
+      },
+      get() {
+        return get.call(this);
+      },
+    };
+  };
+}
+
+// Method decorator @handle attaches event listeners to the shadow DOM,
+// optionally filtered by a selector.
+
+export type Handler<T, K = string> = K extends keyof HTMLElementEventMap
+  ? (this: T, event: HTMLElementEventMap[K]) => void
+  : (this: T, event: Event) => void;
+
+export type HandleDecorator<T, K = string> = (
+  value: Handler<T, K>,
+  context: ClassMethodDecoratorContext<T, Handler<T, K>>
+) => void;
+
 export function handle<
   T extends HTMLElement,
   K extends keyof HTMLElementEventMap
@@ -160,6 +208,9 @@ export function handle<T extends HTMLElement>(
     value: Handler<T>,
     context: ClassMethodDecoratorContext<T, Handler<T>>
   ): void {
+    if (context.kind !== "method") {
+      throw new TypeError(`Method decorator @attr used on ${context.kind}`);
+    }
     context.addInitializer(function () {
       if (!this.shadowRoot) {
         throw new Error("No shadow root to attach handler function to");
@@ -170,12 +221,50 @@ export function handle<T extends HTMLElement>(
         this.shadowRoot.addEventListener(type, (evt) => {
           if (
             evt.target instanceof HTMLElement &&
-            evt.target.matches(selector)
+            evt.target.closest(selector)
           ) {
             value.call(this, evt);
           }
         });
       }
     });
+  };
+}
+
+// Class field decorator @debounce() debounces functions.
+
+/* eslint-disable */
+type Debounceable<A extends unknown[]> = (...args: A[]) => void;
+type DebounceDecoratorCtx<A extends unknown[]> = ClassFieldDecoratorContext<
+  unknown,
+  Debounceable<A>
+>;
+type DebounceDecoratorResult<A extends unknown[]> = (
+  func: Debounceable<A>
+) => Debounceable<A>;
+/* eslint-enable */
+
+export function debounce<A extends unknown[]>(
+  time = 1000
+): (_: unknown, ctx: DebounceDecoratorCtx<A>) => DebounceDecoratorResult<A> {
+  return function debounceDecorator(value, ctx) {
+    if (ctx.kind !== "field") {
+      throw new TypeError("@debounce is a field decorator");
+    }
+    return function init(func: Debounceable<A>): Debounceable<A> {
+      if (typeof func !== "function") {
+        throw new TypeError("@debounce can only be applied to functions");
+      }
+      let handle: number | undefined = undefined;
+      return function (...args: any[]): any {
+        if (typeof handle !== "undefined") {
+          window.clearTimeout(handle);
+        }
+        handle = window.setTimeout(() => {
+          handle = undefined;
+          func(...args);
+        }, time);
+      };
+    };
   };
 }
