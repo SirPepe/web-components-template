@@ -15,7 +15,7 @@
     "@babel/core": "^7.20.5",
     "@babel/plugin-proposal-decorators": "^7.20.5",
     "@babel/preset-env": "^7.20.2",
-    "@sirpepe/ornament": "^0.0.3",
+    "@sirpepe/ornament": "^0.0.12",
     "uhtml": "^3.1.0"
   },
   "devDependencies": {

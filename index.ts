@@ -1,6 +1,5 @@
 /*import "./components/counter-element.ts";
-document.documentElement.append(document.createElement("counter-element"));
-*/
+document.documentElement.append(document.createElement("counter-element"));*/
 
 import "./components/scroll-progress";
 
