@@ -1,5 +1,12 @@
 import { render, html } from "uhtml";
-import { define, attr, reactive, int, subscribe } from "@sirpepe/ornament";
+import {
+  define,
+  attr,
+  reactive,
+  int,
+  init,
+  subscribe,
+} from "@sirpepe/ornament";
 
 type WithShadow<T extends HTMLElement = HTMLElement> = T & {
   root: ShadowRoot;
@@ -7,12 +14,12 @@ type WithShadow<T extends HTMLElement = HTMLElement> = T & {
 
 const handle = <T extends WithShadow>(eventName: string, selector: string) =>
   subscribe(
-    function (this: T) {
-      return this.root;
+    function (instance: T) {
+      return instance.root;
     },
     eventName,
     {
-      predicate: (evt) =>
+      predicate: (_, evt) =>
         evt.target instanceof HTMLElement && evt.target.matches(selector),
     },
   );
@@ -37,6 +44,7 @@ export class CounterElement extends HTMLElement {
     this.value -= this.step;
   }
 
+  @init()
   @reactive()
   #render() {
     render(

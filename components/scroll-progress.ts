@@ -1,5 +1,12 @@
 import { html, render } from "uhtml";
-import { debounce, define, prop, reactive, number } from "@sirpepe/ornament";
+import {
+  debounce,
+  define,
+  prop,
+  reactive,
+  number,
+  init,
+} from "@sirpepe/ornament";
 
 @define("scroll-progress")
 export class ScrollProgressElement extends HTMLElement {
@@ -25,11 +32,10 @@ export class ScrollProgressElement extends HTMLElement {
 
   constructor() {
     super();
-    this.ownerDocument.addEventListener("scroll", this._handler);
+    this.ownerDocument.addEventListener("scroll", this.#handler);
   }
 
-  // https://github.com/SirPepe/ornament/issues/1
-  @debounce({ fn: debounce.timeout(50) }) _handler = () => {
+  @debounce({ fn: debounce.timeout(50) }) #handler = () => {
     /* eslint-disable */
     const position =
       (window.scrollY /
@@ -43,6 +49,7 @@ export class ScrollProgressElement extends HTMLElement {
     return this.#value;
   }
 
+  @init()
   @reactive()
   #render() {
     render(
